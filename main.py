@@ -1,5 +1,5 @@
 #Importing FastAPI class from fastapi library to build an API and HTTPException for Error Handling
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI,HTTPException,Body
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -8,9 +8,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 app = FastAPI()
 
-client = "mongodb://127.0.0.1:27017"
+client =AsyncIOMotorClient("mongodb://127.0.0.1:27017")
 db = client.todo_db
-tasks_collection = db.todo_db
+tasks_collection = db.todo
 
 
 '''
@@ -19,7 +19,7 @@ when someone hits the end point the associated function will be executed,here we
 '''
 
 @app.post("/tasks")  #This is the end point of POST request,which is created using decorator(@app)
-async def create_task(task:dict): #This is a function which asks tasK:dict from the client
+async def create_task(task: dict): #This is a function which asks tasK:dict from the client
     if "title" not in task or "description" not in task:
         raise HTTPException(status_code=404,detail="Missing 'title' or 'description' ")
 
@@ -32,7 +32,7 @@ async def create_task(task:dict): #This is a function which asks tasK:dict from 
             }   #we are creating a dictionary with key-values
 
     result = await tasks_collection.insert_one(new_task)
-    new_task["_id'] = str(result.inserted_id)
+    new_task["_id"] = str(result.inserted_id)
     return new_task #we are returning the created task to the client
 
 '''
@@ -55,22 +55,25 @@ if that specific id not available then it results in erro
 
 @app.get("/tasks/{task_id}") #This is a dynamic routing with path-parameters for getting task by id
 async def get_task_by_id(task_id: str): #Function which asks for id which is of type str
-    task = await tasks_collection.find_one({"_id":ObjectId(task_id)})
-        if not task: #checking for task_id Availability
-            raise HTTPException(status_code=404,detail="Task not found")
-    task["_id"] = str(task["_id"])
-    return task
+    object_id = ObjectId(task_id)  # Convert string to ObjectId
+    task = await tasks_collection.find_one({"_id": object_id})
+     
+    if task: #checking for task_id Availability
+        task["_id"] = str(task["_id"])
+        return task
 
+    raise HTTPException(status_code=404,detail="Task not found")
 '''
     creating an end point for PUT request,which will update the task as per client request,if not found raise an error
 '''
 
 @app.put("/tasks/{task_id}")  #This is a dynamic routing with path-parameters for updating the task
 async def update_task_by_id(task_id: str, updated_task:dict):
-    result = await tasks_collection.update_one({"_id":ObjectId(task_id),{"$set":updated_task}})
+    object_id = ObjectId(task_id)  # Convert string to ObjectId
+    result = await tasks_collection.update_one({"_id":object_id},{"$set":updated_task})
 
-    if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Task not found")
+    if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Task not found or not modifief")
  
     return {"message" : "Task Updated Successfully"}
 
@@ -79,8 +82,9 @@ async def update_task_by_id(task_id: str, updated_task:dict):
 '''
 
 @app.delete("/tasks/{task_id}") #This is a dynamic routing with path-parameters for deleting the task by id
-def delete_task_by_id(task_id: int): #This function accepts an id of a tsak to delete the task in tasks list
-    result = await tasks_collection.delete_one({"_id":ObjectId(task_id)})
+async def delete_task_by_id(task_id: str): #This function accepts an id of a tsak to delete the task in tasks list
+    object_id = ObjectId(task_id)  # Convert string to ObjectId
+    result = await tasks_collection.delete_one({"_id":object_id})
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404,detail="Task not found")
